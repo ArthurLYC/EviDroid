@@ -1,0 +1,261 @@
+from __future__ import annotations
+
+VIEW_WEIGHTS = {
+    "permission": 0.25,
+    "api": 0.40,
+    "component": 0.20,
+    "string": 0.15,
+}
+
+VIEW_PREFIXES = {
+    "permission": "PERM",
+    "api": "API",
+    "component": "COMP",
+    "string": "STR",
+}
+
+SUSPICIOUS_STRING_MARKERS = (
+    "http://",
+    "https://",
+    "imei",
+    "imsi",
+    "device_id",
+    "android_id",
+    "phone",
+    "sms",
+    "upload",
+    "download",
+    "token",
+    "password",
+    "passwd",
+    "dex",
+    ".apk",
+    ".so",
+    "/system/bin",
+    "chmod ",
+    "latitude",
+    "longitude",
+)
+
+API_ALLOW_PREFIXES = (
+    "Landroid/",
+    "Ldalvik/",
+    "Ljava/",
+    "Ljavax/",
+    "Lorg/apache/http/",
+    "Lokhttp3/",
+    "Lcom/google/",
+)
+
+BEHAVIOR_RULES = [
+    {
+        "label": "privacy_collection",
+        "name": "Privacy information collection",
+        "description": "The app may collect device identifiers, accounts, contacts, or phone state.",
+        "min_evidence": 2,
+        "min_views": 1,
+        "keywords": {
+            "permission": [
+                "READ_PHONE_STATE",
+                "GET_ACCOUNTS",
+                "READ_CONTACTS",
+                "READ_CALL_LOG",
+                "READ_PROFILE",
+            ],
+            "api": [
+                "TelephonyManager;->getDeviceId",
+                "TelephonyManager;->getSubscriberId",
+                "TelephonyManager;->getLine1Number",
+                "TelephonyManager;->getSimSerialNumber",
+                "Settings$Secure;->getString",
+                "AccountManager",
+                "ContactsContract",
+            ],
+            "string": [
+                "imei",
+                "imsi",
+                "android_id",
+                "device_id",
+                "subscriber",
+                "phone_number",
+            ],
+        },
+    },
+    {
+        "label": "network_communication",
+        "name": "Network communication or data upload",
+        "description": "The app has network capability and possible remote endpoints or upload logic.",
+        "min_evidence": 2,
+        "min_views": 1,
+        "keywords": {
+            "permission": ["INTERNET", "ACCESS_NETWORK_STATE", "ACCESS_WIFI_STATE"],
+            "api": [
+                "HttpURLConnection",
+                "URLConnection",
+                "org/apache/http",
+                "okhttp",
+                "Socket",
+                "URL;-><init>",
+                "WebView;->loadUrl",
+            ],
+            "string": [
+                "http://",
+                "https://",
+                "upload",
+                "api/",
+                "token",
+                "server",
+                "host",
+            ],
+        },
+    },
+    {
+        "label": "dynamic_code_loading",
+        "name": "Dynamic code loading",
+        "description": "The app may load code dynamically through dex, class loader, or reflection APIs.",
+        "min_evidence": 1,
+        "min_views": 1,
+        "keywords": {
+            "api": [
+                "DexClassLoader",
+                "PathClassLoader",
+                "BaseDexClassLoader",
+                "Class;->forName",
+                "ClassLoader;->loadClass",
+                "Method;->invoke",
+            ],
+            "string": [
+                "classes.dex",
+                "loadClass",
+                "DexClassLoader",
+                "payload",
+            ],
+        },
+    },
+    {
+        "label": "sms_or_call_abuse",
+        "name": "SMS or call abuse",
+        "description": "The app may read, receive, send SMS messages, or place phone calls.",
+        "min_evidence": 1,
+        "min_views": 1,
+        "keywords": {
+            "permission": [
+                "SEND_SMS",
+                "READ_SMS",
+                "RECEIVE_SMS",
+                "WRITE_SMS",
+                "CALL_PHONE",
+                "READ_PHONE_NUMBERS",
+            ],
+            "api": [
+                "SmsManager;->sendTextMessage",
+                "SmsMessage",
+                "ACTION_CALL",
+                "ACTION_DIAL",
+            ],
+            "string": ["sms", "sendTextMessage", "tel:", "content://sms"],
+        },
+    },
+    {
+        "label": "boot_persistence",
+        "name": "Boot-time persistence",
+        "description": "The app may receive boot events and start itself after device reboot.",
+        "min_evidence": 1,
+        "min_views": 1,
+        "keywords": {
+            "permission": ["RECEIVE_BOOT_COMPLETED"],
+            "string": ["BOOT_COMPLETED", "LOCKED_BOOT_COMPLETED", "QUICKBOOT_POWERON"],
+        },
+    },
+    {
+        "label": "overlay_or_phishing",
+        "name": "Overlay or phishing surface",
+        "description": "The app may draw overlays or use UI surfaces that can support phishing.",
+        "min_evidence": 1,
+        "min_views": 1,
+        "keywords": {
+            "permission": ["SYSTEM_ALERT_WINDOW", "BIND_ACCESSIBILITY_SERVICE"],
+            "api": ["TYPE_SYSTEM_ALERT", "TYPE_APPLICATION_OVERLAY", "AccessibilityService"],
+            "string": ["overlay", "accessibility", "phish", "login"],
+        },
+    },
+    {
+        "label": "command_execution",
+        "name": "Command execution",
+        "description": "The app may execute shell commands or interact with privileged binaries.",
+        "min_evidence": 1,
+        "min_views": 1,
+        "keywords": {
+            "api": ["Runtime;->exec", "ProcessBuilder"],
+            "string": ["/system/bin/sh", "/system/xbin/su", "/system/bin/su", "chmod ", "mount -o"],
+        },
+    },
+    {
+        "label": "crypto_or_obfuscation",
+        "name": "Cryptography or obfuscation",
+        "description": "The app uses cryptographic, digest, or encoding APIs that may support obfuscation or secure transfer.",
+        "min_evidence": 2,
+        "min_views": 1,
+        "keywords": {
+            "api": [
+                "Cipher;->getInstance",
+                "MessageDigest;->getInstance",
+                "SecretKeySpec",
+                "Base64",
+                "Mac;->getInstance",
+            ],
+            "string": ["AES", "RSA", "Base64", "MD5", "SHA-1", "SHA256"],
+        },
+    },
+    {
+        "label": "location_tracking",
+        "name": "Location tracking",
+        "description": "The app may access GPS or network-based location.",
+        "min_evidence": 1,
+        "min_views": 1,
+        "keywords": {
+            "permission": ["ACCESS_FINE_LOCATION", "ACCESS_COARSE_LOCATION", "ACCESS_BACKGROUND_LOCATION"],
+            "api": ["LocationManager", "requestLocationUpdates", "getLastKnownLocation", "FusedLocationProvider"],
+            "string": ["latitude", "longitude", "gps", "location"],
+        },
+    },
+    {
+        "label": "file_storage_access",
+        "name": "External file or storage access",
+        "description": "The app may read or write external files, downloads, or shared storage.",
+        "min_evidence": 1,
+        "min_views": 1,
+        "keywords": {
+            "permission": [
+                "READ_EXTERNAL_STORAGE",
+                "WRITE_EXTERNAL_STORAGE",
+                "MANAGE_EXTERNAL_STORAGE",
+            ],
+            "api": ["FileInputStream", "FileOutputStream", "openFileOutput", "Environment;->getExternalStorage"],
+            "string": ["/sdcard", "download", ".apk", ".dex", ".db"],
+        },
+    },
+    {
+        "label": "package_installation",
+        "name": "Package installation",
+        "description": "The app may install, drop, or interact with APK packages.",
+        "min_evidence": 1,
+        "min_views": 1,
+        "keywords": {
+            "permission": ["REQUEST_INSTALL_PACKAGES", "INSTALL_PACKAGES"],
+            "api": ["PackageInstaller", "ACTION_INSTALL_PACKAGE", "PackageManager;->installPackage"],
+            "string": [".apk", "application/vnd.android.package-archive"],
+        },
+    },
+    {
+        "label": "native_code_loading",
+        "name": "Native code loading",
+        "description": "The app may load native libraries.",
+        "min_evidence": 1,
+        "min_views": 1,
+        "keywords": {
+            "api": ["System;->loadLibrary", "System;->load"],
+            "string": [".so", "lib/", "loadLibrary"],
+        },
+    },
+]
